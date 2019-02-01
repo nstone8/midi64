@@ -28,7 +28,7 @@ def findTracks(romPath:str)->list:
         #trackPos should now be set to the beginning of the last track chunk
         trackLength=int.from_bytes(rom[trackPos+4:trackPos+8],'big')
         endPos=trackPos+8+trackLength
-        tracks.append({'start':head,'end':endPos,'format':headerFormat,'division':division,'numTracks':numTracks})
+        tracks.append({'start':head,'end':endPos,'format':headerFormat,'division':division,'numTracks':numTracks,'length':endPos-head})
     return tracks
 
 def ripTrackToFile(romPath:str,savePath:str,start:int,end:int,**kwargs)->None:
@@ -41,10 +41,31 @@ def ripTrackToFile(romPath:str,savePath:str,start:int,end:int,**kwargs)->None:
 def padTrack(track:bytes,desiredLength:int)->bytes:
     '''Add text meta-event to the track to cause it to reach desiredLength. Returns padded track'''
     #Check that we have enough room in our length budget for the meta-event header (may not be possible)
+    track=bytearray(track)
+    curLen=len(track)
+    padToAdd=desiredLength-curLen-2 #meta event has 2 byte overhead + len specifier + data
+    if padToAdd<1:
+        raise Exception('Track longer than desired length or too large to pad')
+    #construct padding meta-event
+    lenSpecifier=intToVariableLength(padToAdd)
+    deadline=100
+    while padToAdd-len(lenSpecifier)-parseVariableLength(lenSpecifier)!=0:
+        #need to adjust lenSpecifier so len(lenSpecifier)+len(meta data)==padToAdd and len(meta data)==parseVariableLength(lenSpecifier)
+        lenSpecifier=intToVariableLength(padToAdd-len(lenSpecifier))
+        deadline-=1
+        if not deadline:
+            raise Exception('failed to find correct length specifier')
+    padToAdd-=len(lenSpecifier) #The len specifier takes up some of our space
+    meta=bytes(bytearray([0xFF,0x01])+bytearray(lenSpecifier)+bytearray([ord('a')]*padToAdd)) #meta event header for a text event followed by 'a's repeated to fill up space
     #Find first Track chunk
-    #stuff padding meta-event in between chunk header and the rest of the file
+    firstTrackPos=track.index(b'MTrk')+4 #get position of right after 'MTrk' tag
+    oldLength=int.from_bytes(track[firstTrackPos:firstTrackPos+4],'big') #length of track before padding
+    newLength=oldLength+len(meta) #length of track after padding
+    meta=newLength.to_bytes(length=4,byteorder='big')+meta
+    #stuff padding meta-event in between chunk header and the rest of the file, overwriting old track length
+    track[firstTrackPos:firstTrackPos+4]=meta
     #return new midi file as bytes
-    pass
+    return bytes(track)
 
 def parseVariableLength(buf:bytes)->int:
     '''Convert the variable-length value starting at the first byte of buf to an int'''
@@ -81,6 +102,5 @@ def intToVariableLength(i:int)->bytes:
         sections[i]='1'+sections[i]
     sections[-1]='0'+sections[-1]
     #concatenate and convert to bytes
-    print(sections)
     varLengthBytes=int(''.join(sections),2).to_bytes(length=len(sections),byteorder='big')
     return varLengthBytes
