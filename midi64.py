@@ -1,6 +1,22 @@
-def findTracks(romPath:str)->list:
-    '''Search for MIDI tracks in the rom stored at romPath returns a list of dicts containing the start position of the track in the file and the total length of the track'''
-    rom=open(romPath,'rb').read() #read rom
+class Rom:
+    '''Class representing an n64 rom'''
+    def __init__(self,rom:bytes):
+        '''create a new Rom object containing the rom as bytes and information on all midi tracks contained therein'''
+        self.rom=rom
+        self.tracks=findTracks(self.rom)
+    def ripTrack(self,trackNum:int,savePath:str)->None:
+        '''Rip track number trackNum to a file at savePath'''
+        ripTrackToFile(self.rom,savePath,self.tracks[trackNum]['start'],self.tracks[trackNum]['end'])
+    def replaceTrack(self,trackNum:int,newTrackPath:str)->'Rom':
+        '''Replace track number trackNum with the midi track stored at newTrackPath and return new Rom object reflecting changes'''
+        newTrack=open(newTrackPath,'rb').read() #read in new track
+        newTrack=padTrack(newTrack,self.tracks[trackNum]['length']) #pad new track to be the same length as the old one
+        newRom=bytearray(self.rom) #get current rom in editable format
+        newRom[self.tracks[trackNum]['start']:self.tracks[trackNum]['end']]=newTrack
+        return Rom(bytes(newRom)) #return new Rom object with changed rom data
+
+def findTracks(rom:bytes)->list:
+    '''Search for MIDI tracks in the rom rom returns a list of dicts containing the start position of the track in the file and the total length of the track'''
     headerPos=[]
     start=0
     while True:
@@ -31,9 +47,8 @@ def findTracks(romPath:str)->list:
         tracks.append({'start':head,'end':endPos,'format':headerFormat,'division':division,'numTracks':numTracks,'length':endPos-head})
     return tracks
 
-def ripTrackToFile(romPath:str,savePath:str,start:int,end:int,**kwargs)->None:
+def ripTrackToFile(rom:bytes,savePath:str,start:int,end:int,**kwargs)->None:
     '''Rip track starting at byte position start and ending at end in the rom stored at romPath to a file at savePath'''
-    rom=open(romPath,'rb').read() #read rom
     track=rom[start:end]
     outFile=open(savePath,'wb')
     outFile.write(track)
