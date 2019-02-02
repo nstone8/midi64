@@ -1,3 +1,4 @@
+import os
 class Rom:
     '''Class representing an n64 rom'''
     def __init__(self,rom:bytes):
@@ -10,10 +11,30 @@ class Rom:
     def replaceTrack(self,trackNum:int,newTrackPath:str)->'Rom':
         '''Replace track number trackNum with the midi track stored at newTrackPath and return new Rom object reflecting changes'''
         newTrack=open(newTrackPath,'rb').read() #read in new track
-        newTrack=padTrack(newTrack,self.tracks[trackNum]['length']) #pad new track to be the same length as the old one
+        newTrack=padTrackNull(newTrack,self.tracks[trackNum]['length']) #pad new track to be the same length as the old one
         newRom=bytearray(self.rom) #get current rom in editable format
         newRom[self.tracks[trackNum]['start']:self.tracks[trackNum]['end']]=newTrack
         return Rom(bytes(newRom)) #return new Rom object with changed rom data
+    def save(self,path:str):
+        '''save rom image represented by this object to disk'''
+        f=open(path,'wb')
+        f.write(self.rom)
+        f.close()
+    def ripAllTracks(self,saveDir:str):
+        i=0
+        for track in self.tracks:
+            f=open(os.path.join(saveDir,'Track '+str(i)+'.midi'),'wb')
+            f.write(self.rom[track['start']:track['end']])
+            f.close()
+            i+=1
+        
+
+def loadRom(romPath:str)->Rom:
+    '''Create a new Rom object from the rom stored at romPath'''
+    f=open(romPath,'rb')
+    rom=Rom(f.read())
+    f.close()
+    return rom
 
 def findTracks(rom:bytes)->list:
     '''Search for MIDI tracks in the rom rom returns a list of dicts containing the start position of the track in the file and the total length of the track'''
@@ -53,7 +74,7 @@ def ripTrackToFile(rom:bytes,savePath:str,start:int,end:int,**kwargs)->None:
     outFile=open(savePath,'wb')
     outFile.write(track)
     outFile.close()
-def padTrack(track:bytes,desiredLength:int)->bytes:
+def padTrackMeta(track:bytes,desiredLength:int)->bytes:
     '''Add text meta-event to the track to cause it to reach desiredLength. Returns padded track'''
     #Check that we have enough room in our length budget for the meta-event header (may not be possible)
     track=bytearray(track)
@@ -81,6 +102,12 @@ def padTrack(track:bytes,desiredLength:int)->bytes:
     track[firstTrackPos:firstTrackPos+4]=meta
     #return new midi file as bytes
     return bytes(track)
+
+def padTrackNull(track:bytes,desiredLength:int)->bytes:
+    '''Add null bytes to the end of track to cause it to reach desiredLength. Returns padded track'''
+    toAdd=desiredLength-len(track)
+    track=track+bytes(toAdd)
+    return track
 
 def parseVariableLength(buf:bytes)->int:
     '''Convert the variable-length value starting at the first byte of buf to an int'''
